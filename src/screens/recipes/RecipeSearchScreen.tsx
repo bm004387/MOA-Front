@@ -10,6 +10,8 @@ import styles from '../../styles/recipeApp';
 
 interface RecipeSearchScreenProps {
   recipes: Recipe[];
+  isLoading: boolean;
+  token: string;
   categories: RecipeCategory[];
   savedIds: string[];
   searchText: string;
@@ -18,6 +20,8 @@ interface RecipeSearchScreenProps {
   onCategoryChange: (category: string) => void;
   onOpenRecipe: (recipe: Recipe) => void;
   onToggleSaved: (id: string) => void;
+  onToggleLike: (id: string) => void;
+  onAuthorPress: (userId: string) => void;
 }
 
 function RecipeSearchScreen(props: RecipeSearchScreenProps) {
@@ -44,7 +48,7 @@ function RecipeSearchScreen(props: RecipeSearchScreenProps) {
         <View style={styles.sectionHeading}>
           <View>
             <Text style={styles.sectionTitle}>{props.searchText ? '검색 결과' : '둘러보기'}</Text>
-            <Text style={styles.sectionCaption}>{props.recipes.length}개의 레시피</Text>
+            {!props.isLoading && <Text style={styles.sectionCaption}>{props.recipes.length}개의 레시피</Text>}
           </View>
           <Text style={styles.sortLabel}>인기순⌄</Text>
         </View>
@@ -52,11 +56,16 @@ function RecipeSearchScreen(props: RecipeSearchScreenProps) {
           <RecipeCard
             key={recipe.id}
             recipe={recipe}
+            token={props.token}
             isSaved={props.savedIds.includes(recipe.id)}
             onOpen={props.onOpenRecipe}
             onToggleSaved={props.onToggleSaved}
+            onToggleLike={props.onToggleLike}
+            onAuthorPress={props.onAuthorPress}
           />
-        )) : <RecipeEmptyState title="검색 결과가 없어요" description="다른 요리 이름이나 재료로 찾아보세요." />}
+        )) : !props.isLoading ? (
+          <RecipeEmptyState title="검색 결과가 없어요" description="다른 요리 이름이나 재료로 찾아보세요." />
+        ) : null}
       </ScrollView>
     </>
   );

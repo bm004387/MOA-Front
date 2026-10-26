@@ -9,7 +9,7 @@ import useMsg from '../../hooks/useMsg';
 const recipeLabels: Record<string, string> = {
   main: '홈',
   community: '검색',
-  settings: '저장',
+  settings: '전체메뉴',
   myInfo: '내 요리',
 };
 

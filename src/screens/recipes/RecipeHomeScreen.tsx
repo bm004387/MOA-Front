@@ -1,16 +1,20 @@
 import React from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import RecipeArtwork from '../../components/recipes/RecipeArtwork';
 import RecipeCard from '../../components/recipes/RecipeCard';
 import RecipeCategories from '../../components/recipes/RecipeCategories';
 import RecipeHeader from '../../components/recipes/RecipeHeader';
 import RecipeEmptyState from '../../components/recipes/RecipeEmptyState';
+import { API_BASE_URL } from '../../config/environment';
+import { getAvatarColor } from '../../utils/avatarColor';
 import type { Recipe, RecipeCategory } from '../../types/recipe';
 import styles from '../../styles/recipeApp';
 
 interface RecipeHomeScreenProps {
   recipes: Recipe[];
+  isLoading: boolean;
+  token: string;
   filteredRecipes: Recipe[];
   categories: RecipeCategory[];
   savedIds: string[];
@@ -20,6 +24,8 @@ interface RecipeHomeScreenProps {
   onCategoryChange: (category: string) => void;
   onOpenRecipe: (recipe: Recipe) => void;
   onToggleSaved: (id: string) => void;
+  onToggleLike: (id: string) => void;
+  onAuthorPress: (userId: string) => void;
   onWrite: () => void;
 }
 
@@ -58,22 +64,55 @@ function RecipeHomeScreen(props: RecipeHomeScreenProps) {
         </View>
         <RecipeCategories selected={props.selectedCategory} onSelect={props.onCategoryChange} categories={props.categories} />
         {featured && (
-          <Pressable onPress={() => props.onOpenRecipe(featured)} style={styles.featuredCard}>
-            <RecipeArtwork recipe={featured} large />
-            <View style={styles.featuredOverlay}>
-              <View style={styles.featuredBadge}><Text style={styles.featuredBadgeText}>오늘의 추천</Text></View>
-              <Text style={styles.featuredTitle}>{featured.title}</Text>
-              <Text style={styles.featuredSubtitle}>{featured.description}</Text>
-              <View style={styles.featuredMetaRow}>
-                <Text style={styles.featuredMeta}>♡ {featured.likeCount ?? featured.rating}</Text>
-                <Text style={styles.featuredDot}>·</Text>
-                <Text style={styles.featuredMeta}>◷ {featured.cookingMinutes}분</Text>
-                <Text style={styles.featuredDot}>·</Text>
-                <Text style={styles.featuredMeta}>저장 {featured.saves}</Text>
+          <View style={styles.featuredCard}>
+            <RecipeArtwork recipe={featured} token={props.token} large />
+            <Pressable accessibilityRole="button" accessibilityLabel={`${featured.title} 상세 보기`} onPress={() => props.onOpenRecipe(featured)} style={styles.featuredOpenArea}>
+              <View style={styles.featuredOverlay}>
+                <View style={styles.featuredBadge}><Text style={styles.featuredBadgeText}>오늘의 추천</Text></View>
+                <Text style={styles.featuredTitle}>{featured.title}</Text>
+                <Text style={styles.featuredSubtitle}>{featured.description}</Text>
+                <View style={styles.featuredMetaRow}>
+                  <Text style={styles.featuredMeta}>◷ {featured.cookingMinutes}분</Text>
+                  <Text style={styles.featuredDot}>·</Text>
+                  <Text style={styles.featuredMeta}>저장 {featured.saves}</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.featuredArrow}><Text style={styles.featuredArrowText}>↗</Text></View>
-          </Pressable>
+              <View style={styles.featuredArrow}><Text style={styles.featuredArrowText}>↗</Text></View>
+            </Pressable>
+            {featured.authorId && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${featured.author} 요리 페이지 보기`}
+                onPress={() => props.onAuthorPress(featured.authorId!)}
+                style={styles.featuredAuthorButton}
+              >
+                {featured.profileImageFilSeq ? (
+                  <Image
+                    source={{
+                      uri: `${API_BASE_URL}/api/community/files/${featured.profileImageFilSeq}`,
+                      headers: { Authorization: `Bearer ${props.token}` },
+                    }}
+                    style={styles.featuredAuthorAvatar}
+                  />
+                ) : (
+                  <View style={[styles.featuredAuthorAvatar, { backgroundColor: getAvatarColor(featured.authorId) }]}>
+                    <Text style={styles.featuredAuthorInitial}>{featured.authorInitial}</Text>
+                  </View>
+                )}
+                <Text numberOfLines={1} style={styles.featuredAuthorName}>{featured.author}의 요리</Text>
+                <Text style={styles.featuredAuthorArrow}>›</Text>
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={featured.likedByMe ? '좋아요 취소' : '좋아요'}
+              onPress={() => props.onToggleLike(featured.id)}
+              style={styles.featuredLikeButton}>
+              <Text style={[styles.featuredLikeText, featured.likedByMe && styles.featuredLikeTextActive]}>
+                {featured.likedByMe ? '♥' : '♡'} {featured.likeCount ?? featured.rating}
+              </Text>
+            </Pressable>
+          </View>
         )}
         <View style={styles.sectionHeading}>
           <View>
@@ -88,12 +127,17 @@ function RecipeHomeScreen(props: RecipeHomeScreenProps) {
           <RecipeCard
             key={recipe.id}
             recipe={recipe}
+            token={props.token}
             compact
             isSaved={props.savedIds.includes(recipe.id)}
             onOpen={props.onOpenRecipe}
             onToggleSaved={props.onToggleSaved}
+            onToggleLike={props.onToggleLike}
+            onAuthorPress={props.onAuthorPress}
           />
-        )) : <RecipeEmptyState title="검색 결과가 없어요" description="다른 요리 이름이나 재료로 찾아보세요." />}
+        )) : !props.isLoading && props.recipes.length === 0 ? (
+          <RecipeEmptyState title="검색 결과가 없어요" description="다른 요리 이름이나 재료로 찾아보세요." />
+        ) : null}
         <View style={styles.bottomNote}><Text style={styles.bottomNoteText}>오늘도 맛있는 한 끼, 한끼모아와 함께 🍅</Text></View>
       </ScrollView>
     </>

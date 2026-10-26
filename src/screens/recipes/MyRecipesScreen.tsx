@@ -9,15 +9,19 @@ import styles from '../../styles/recipeApp';
 
 interface MyRecipesScreenProps {
   recipes: Recipe[];
+  token: string;
+  isLoading: boolean;
   savedCount: number;
   onWrite: () => void;
   onLogout: () => void;
   onOpenRecipe: (recipe: Recipe) => void;
   onToggleSaved: (id: string) => void;
+  onToggleLike: (id: string) => void;
+  onAuthorPress: (userId: string) => void;
   savedIds: string[];
 }
 
-function MyRecipesScreen({ recipes, savedCount, onWrite, onLogout, onOpenRecipe, onToggleSaved, savedIds }: MyRecipesScreenProps) {
+function MyRecipesScreen({ recipes, token, isLoading, savedCount, onWrite, onLogout, onOpenRecipe, onToggleSaved, onToggleLike, onAuthorPress, savedIds }: MyRecipesScreenProps) {
   return (
     <>
       <RecipeHeader title="내 요리" right={(
@@ -37,7 +41,7 @@ function MyRecipesScreen({ recipes, savedCount, onWrite, onLogout, onOpenRecipe,
           </Pressable>
         </View>
         <View style={styles.statsRow}>
-          <Stat value={String(recipes.length)} label="레시피" />
+          <Stat value={isLoading ? '—' : String(recipes.length)} label="레시피" />
           <View style={styles.statDivider} />
           <Stat value={String(savedCount)} label="저장" />
           <View style={styles.statDivider} />
@@ -52,13 +56,16 @@ function MyRecipesScreen({ recipes, savedCount, onWrite, onLogout, onOpenRecipe,
             <Text style={styles.outlineActionText}>＋ 작성</Text>
           </Pressable>
         </View>
-        {recipes.length ? recipes.map(recipe => (
+        {isLoading ? null : recipes.length ? recipes.map(recipe => (
           <RecipeCard
             key={recipe.id}
             recipe={recipe}
+            token={token}
             isSaved={savedIds.includes(recipe.id)}
             onOpen={onOpenRecipe}
             onToggleSaved={onToggleSaved}
+            onToggleLike={onToggleLike}
+            onAuthorPress={onAuthorPress}
           />
         )) : <RecipeEmptyState title="첫 레시피를 만들어 보세요" description="나만의 맛있는 순간을 기록하고 공유해요." />}
       </ScrollView>

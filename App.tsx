@@ -11,6 +11,7 @@ import AccountRecoveryScreen from './src/screens/AccountRecoveryScreen';
 import SignupScreen from './src/screens/SignupScreen';
 import PinSetupScreen from './src/screens/PinSetupScreen';
 import RecipeAppScreen from './src/screens/RecipeAppScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import BottomNavigation from './src/components/common/BottomNavigation';
 import BrandLoader from './src/components/common/BrandLoader';
 import { getBottomMenuList } from './src/api/menuApi';
@@ -38,7 +39,7 @@ import useMsg from './src/hooks/useMsg';
 
 import { MsgProvider } from './src/context/MsgContext';
 
-type AppRoute = 'main' | 'myInfo' | 'settings' | 'community';
+type AppRoute = 'main' | 'myInfo' | 'settings' | 'community' | 'saved';
 type Screen =
   | 'loading'
   | 'locked'
@@ -52,13 +53,15 @@ const SESSION_RESUME_GRACE_MS = 3_000;
 
 interface RouteScreenProps {
   onLogout: () => void;
+  onMenuSelect: (item: MenuItem) => void;
 }
 
 const routeScreens: Record<AppRoute, (props: RouteScreenProps) => React.ReactNode> = {
   main: ({ onLogout }) => <RecipeAppScreen activeTab="home" onLogout={onLogout} />,
   myInfo: ({ onLogout }) => <RecipeAppScreen activeTab="myRecipes" onLogout={onLogout} />,
-  settings: ({ onLogout }) => <RecipeAppScreen activeTab="saved" onLogout={onLogout} />,
+  settings: ({ onMenuSelect }) => <SettingsScreen onMenuSelect={onMenuSelect} />,
   community: ({ onLogout }) => <RecipeAppScreen activeTab="search" onLogout={onLogout} />,
+  saved: ({ onLogout }) => <RecipeAppScreen activeTab="saved" onLogout={onLogout} />,
 };
 
 function isAppRoute(route: string | null): route is AppRoute {
@@ -120,7 +123,9 @@ function AppContent() {
       }
       setMenuAccessToken(credentials.password);
       const items = await getBottomMenuList(credentials.password);
-      setMenuItems(items);
+      setMenuItems(items
+        .filter(item => item.programUrl !== 'saved')
+        .sort((left, right) => Number(left.programUrl === 'settings') - Number(right.programUrl === 'settings')));
       if (items.length === 0) {
         setMenuError(getMsgRef.current('COMMON', '027'));
       }
@@ -244,6 +249,10 @@ function AppContent() {
   }, []);
 
   const handleMenuSelect = (item: MenuItem) => {
+    if (item.programUrl === 'saved') {
+      setScreen('saved');
+      return;
+    }
     if (isAppRoute(item.programUrl)) {
       setScreen(item.programUrl);
     }
@@ -319,88 +328,88 @@ function AppContent() {
 
   return (
     <AppSafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-          <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            {screen === 'login' && (
-              <LoginScreen
-                authMode={authMode}
-                initialUsrId={savedUsrId}
-                onSignup={() => setScreen('signup')}
-                onUsePassword={() => setAuthMode('password')}
-                onRecoverAccount={() => setScreen('recovery')}
-                onLoginSuccess={usrId => {
-                  setSavedUsrId(usrId);
-                  handleLoginSuccess();
-                }}
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {screen === 'login' && (
+          <LoginScreen
+            authMode={authMode}
+            initialUsrId={savedUsrId}
+            onSignup={() => setScreen('signup')}
+            onUsePassword={() => setAuthMode('password')}
+            onRecoverAccount={() => setScreen('recovery')}
+            onLoginSuccess={usrId => {
+              setSavedUsrId(usrId);
+              handleLoginSuccess();
+            }}
+          />
+        )}
+
+        {screen === 'signup' && (
+          <SignupScreen
+            onLogin={() => setScreen('login')}
+            onSignupComplete={(usrId, password) => {
+              setPinSetupCredentials({ usrId, password });
+              setFirstPin('');
+              setScreen('pinSetup');
+            }}
+          />
+        )}
+
+        {screen === 'recovery' && <AccountRecoveryScreen onBack={() => setScreen('login')} />}
+
+        {(screen === 'pinSetup' || screen === 'pinConfirm') && pinSetupCredentials && (
+          <PinSetupScreen
+            key={screen}
+            usrId={pinSetupCredentials.usrId}
+            password={pinSetupCredentials.password}
+            confirmation={screen === 'pinConfirm'}
+            firstPin={firstPin}
+            onNext={pin => {
+              setFirstPin(pin);
+              setScreen('pinConfirm');
+            }}
+            onComplete={pin => {
+              void completePinSetup(pin);
+            }}
+          />
+        )}
+
+        {screen === 'loading' && <View style={styles.container} />}
+
+        {routeToRender && (
+          <View style={{ flex: 1 }}>
+            {routeScreens[routeToRender]({ onLogout: handleLogout, onMenuSelect: handleMenuSelect })}
+            <BottomNavigation
+              items={menuItems}
+              accessToken={menuAccessToken}
+              activeRoute={routeToRender === 'saved' ? 'settings' : routeToRender}
+              loading={menuLoading}
+              error={menuError}
+              onSelect={handleMenuSelect}
+              onRetry={() => void loadMenus()}
+            />
+            {screen === 'locked' && (
+              <View
+                pointerEvents="auto"
+                style={[
+                  styles.container,
+                  {
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    left: 0,
+                    backgroundColor: '#fff',
+                  },
+                ]}
               />
             )}
-
-            {screen === 'signup' && (
-              <SignupScreen
-                onLogin={() => setScreen('login')}
-                onSignupComplete={(usrId, password) => {
-                  setPinSetupCredentials({ usrId, password });
-                  setFirstPin('');
-                  setScreen('pinSetup');
-                }}
-              />
-            )}
-
-            {screen === 'recovery' && <AccountRecoveryScreen onBack={() => setScreen('login')} />}
-
-            {(screen === 'pinSetup' || screen === 'pinConfirm') && pinSetupCredentials && (
-              <PinSetupScreen
-                key={screen}
-                usrId={pinSetupCredentials.usrId}
-                password={pinSetupCredentials.password}
-                confirmation={screen === 'pinConfirm'}
-                firstPin={firstPin}
-                onNext={pin => {
-                  setFirstPin(pin);
-                  setScreen('pinConfirm');
-                }}
-                onComplete={pin => {
-                  void completePinSetup(pin);
-                }}
-              />
-            )}
-
-            {screen === 'loading' && <View style={styles.container} />}
-
-            {routeToRender && (
-              <View style={{ flex: 1 }}>
-                {routeScreens[routeToRender]({ onLogout: handleLogout })}
-                <BottomNavigation
-                  items={menuItems}
-                  accessToken={menuAccessToken}
-                  activeRoute={routeToRender}
-                  loading={menuLoading}
-                  error={menuError}
-                  onSelect={handleMenuSelect}
-                  onRetry={() => void loadMenus()}
-                />
-                {screen === 'locked' && (
-                  <View
-                    pointerEvents="auto"
-                    style={[
-                      styles.container,
-                      {
-                        position: 'absolute',
-                        top: 0,
-                        right: 0,
-                        bottom: 0,
-                        left: 0,
-                        backgroundColor: '#fff',
-                      },
-                    ]}
-                  />
-                )}
-              </View>
-            )}
-          </KeyboardAvoidingView>
-          <BrandLoader visible={screen === 'loading'} />
+          </View>
+        )}
+      </KeyboardAvoidingView>
+      <BrandLoader visible={screen === 'loading'} />
     </AppSafeAreaView>
   );
 }
