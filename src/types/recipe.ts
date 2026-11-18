@@ -19,6 +19,7 @@ export interface Recipe {
   profileImageFilSeq?: number | null;
   authorInitial: string;
   createdAt?: string;
+  updatedAt?: string | null;
   emoji: string;
   artwork: string;
   ingredients: string[];

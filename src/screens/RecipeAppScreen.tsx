@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, Animated, Text, View } from 'react-native';
 
 import BrandLoader from '../components/common/BrandLoader';
 import { getCommonCodeGroupList, getCommonCodeList, type CommonCodeGroupItem, type CommonCodeItem } from '../api/commonCodeApi';
@@ -16,13 +16,20 @@ import {
   type RecipeResponse,
 } from '../api/recipeApi';
 import { logout } from '../api/authApi';
-import { getCommunityUserProfile, setCommunityFollow, type CommunityUserProfile } from '../api/communityApi';
+import {
+  getCommunityUserProfile,
+  removeCommunityFollower,
+  setCommunityFollow,
+  type CommunityRelationType,
+  type CommunityUserProfile,
+} from '../api/communityApi';
 import { clearAuthCredentials, getAuthCredentials } from '../storage/tokenStorage';
 import useMsg from '../hooks/useMsg';
 import RecipeCreateScreen from './recipes/RecipeCreateScreen';
 import RecipeDetailScreen from './recipes/RecipeDetailScreen';
 import RecipeHomeScreen from './recipes/RecipeHomeScreen';
-import MyRecipesScreen from './recipes/MyRecipesScreen';
+import RecipeHeader from '../components/recipes/RecipeHeader';
+import CommunityFollowListScreen from './CommunityFollowListScreen';
 import RecipeSavedScreen from './recipes/RecipeSavedScreen';
 import RecipeSearchScreen from './recipes/RecipeSearchScreen';
 import RecipeUserScreen from './recipes/RecipeUserScreen';
@@ -32,9 +39,10 @@ import styles from '../styles/recipeApp';
 interface RecipeAppScreenProps {
   activeTab: RecipeTab;
   onLogout: () => void;
+  menuName?: string;
 }
 
-type Page = 'tab' | 'detail' | 'write' | 'edit' | 'profile';
+type Page = 'tab' | 'detail' | 'write' | 'edit' | 'profile' | 'follows';
 interface PageSnapshot {
   page: Page;
   selectedRecipeId: string;
@@ -43,7 +51,7 @@ interface PageSnapshot {
   profileRecipes: Recipe[];
 }
 
-function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
+function RecipeAppScreen({ activeTab, onLogout, menuName }: RecipeAppScreenProps) {
   const { getMsg } = useMsg();
   const getMsgRef = useRef(getMsg);
   getMsgRef.current = getMsg;
@@ -66,15 +74,26 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
   const [profileUser, setProfileUser] = useState<CommunityUserProfile | null>(null);
   const [profileRecipes, setProfileRecipes] = useState<Recipe[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [myProfile, setMyProfile] = useState<CommunityUserProfile | null>(null);
+  const [myProfileLoading, setMyProfileLoading] = useState(false);
+  const [myProfileError, setMyProfileError] = useState('');
+  const [followRelationType, setFollowRelationType] = useState<CommunityRelationType>('followers');
   const [searchText, setSearchText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('전체');
   const [loggingOut, setLoggingOut] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [tabRefreshing, setTabRefreshing] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
   const recipeRequestId = useRef(0);
+  const tabRefreshInFlight = useRef(false);
   const detailRequestId = useRef(0);
   const profileRequestId = useRef(0);
+  const myProfileRequestId = useRef(0);
   const navigationStack = useRef<PageSnapshot[]>([]);
   const likeRequests = useRef(new Set<string>());
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTranslateY = useRef(new Animated.Value(8)).current;
+  const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedRecipe = detailRecipe ?? recipes.find(recipe => recipe.id === selectedRecipeId);
   const selectedCategoryCode = categories.find(category => category.name === selectedCategory)?.code;
@@ -86,6 +105,34 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
   const isQueryLoading = loadedQueryKey !== queryKey;
   const currentRecipes = loadedQueryKey === queryKey ? recipes : [];
   const savedIds = useMemo(() => currentRecipes.filter(recipe => recipe.savedByMe).map(recipe => recipe.id), [currentRecipes]);
+
+  useEffect(() => () => {
+    if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    toastOpacity.stopAnimation();
+    toastTranslateY.stopAnimation();
+  }, [toastOpacity, toastTranslateY]);
+
+  const showToast = (message: string) => {
+    if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    toastOpacity.stopAnimation();
+    toastTranslateY.stopAnimation();
+    toastOpacity.setValue(0);
+    toastTranslateY.setValue(8);
+    setToastMessage(message);
+    Animated.parallel([
+      Animated.timing(toastOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.timing(toastTranslateY, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start();
+    toastTimeout.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(toastOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+        Animated.timing(toastTranslateY, { toValue: 8, duration: 250, useNativeDriver: true }),
+      ]).start(({ finished }) => {
+        if (finished) setToastMessage('');
+        toastTimeout.current = null;
+      });
+    }, 1750);
+  };
 
   const updateProfileUnderDetail = (recipeId: string, update: (recipe: Recipe) => Recipe) => {
     navigationStack.current = navigationStack.current.map(snapshot => ({
@@ -130,6 +177,32 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
       .catch(error => console.warn('레시피 사진 인증 정보를 읽지 못했습니다.', error));
     return () => { mounted = false; };
   }, []);
+
+  const loadMyProfile = useCallback(async () => {
+    if (!accessToken || !currentUserId) return;
+    const requestId = ++myProfileRequestId.current;
+    setMyProfileLoading(true);
+    setMyProfileError('');
+    try {
+      const profile = await getCommunityUserProfile(accessToken, currentUserId);
+      if (requestId === myProfileRequestId.current) setMyProfile(profile);
+    } catch (error) {
+      if (requestId === myProfileRequestId.current) {
+        setMyProfileError(error instanceof Error ? error.message : getMsgRef.current('COMMON', '023'));
+      }
+    } finally {
+      if (requestId === myProfileRequestId.current) setMyProfileLoading(false);
+    }
+  }, [accessToken, currentUserId]);
+
+  useEffect(() => {
+    if (activeTab !== 'myRecipes' || !accessToken || !currentUserId) return undefined;
+    void loadMyProfile();
+    return () => {
+      myProfileRequestId.current += 1;
+      setMyProfileLoading(false);
+    };
+  }, [activeTab, accessToken, currentUserId, loadMyProfile]);
 
   useEffect(() => {
     let mounted = true;
@@ -182,6 +255,20 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
     }
   }, [queryCategoryCode, queryKey, queryScope, queryText]);
 
+  const refreshCurrentTab = useCallback(() => {
+    if (tabRefreshInFlight.current) return;
+    tabRefreshInFlight.current = true;
+    setTabRefreshing(true);
+    void refreshRecipes()
+      .catch(error => {
+        Alert.alert('레시피', error instanceof Error ? error.message : getMsgRef.current('COMMON', '023'));
+      })
+      .finally(() => {
+        tabRefreshInFlight.current = false;
+        setTabRefreshing(false);
+      });
+  }, [refreshRecipes]);
+
   useEffect(() => {
     if (page !== 'tab') return undefined;
     let active = true;
@@ -220,6 +307,7 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
   const openUserProfile = async (userId: string) => {
     const normalizedUserId = userId.trim();
     if (!normalizedUserId || !accessToken) return;
+    if (activeTab === 'myRecipes' && page === 'tab' && normalizedUserId === currentUserId) return;
     if (page === 'profile' && profileUser?.usrId === normalizedUserId) return;
     saveCurrentScreen();
     const requestId = ++profileRequestId.current;
@@ -264,6 +352,50 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
     } catch (error) {
       setProfileUser(previous);
       Alert.alert('팔로우', error instanceof Error ? error.message : getMsgRef.current('COMMON', '023'));
+    }
+  };
+
+  const openFollowList = (relationType: CommunityRelationType) => {
+    setFollowRelationType(relationType);
+    saveCurrentScreen();
+    setPage('follows');
+  };
+
+  const refreshMyProfileCounts = async () => {
+    if (!accessToken || !currentUserId) return;
+    try {
+      const updatedProfile = await getCommunityUserProfile(accessToken, currentUserId);
+      setMyProfile(updatedProfile);
+      setProfileUser(current => current?.usrId === currentUserId ? updatedProfile : current);
+      navigationStack.current = navigationStack.current.map(snapshot =>
+        snapshot.profileUser?.usrId === currentUserId
+          ? { ...snapshot, profileUser: updatedProfile }
+          : snapshot,
+      );
+    } catch (error) {
+      Alert.alert('팔로우', error instanceof Error ? error.message : getMsgRef.current('COMMON', '023'));
+    }
+  };
+
+  const toggleFollowFromList = async (userId: string, currentlyFollowing: boolean) => {
+    try {
+      const enabled = !currentlyFollowing;
+      await setCommunityFollow(accessToken, userId, enabled);
+      showToast(getMsgRef.current('COMMUNITY', enabled ? '003' : '004'));
+      return true;
+    } catch (error) {
+      Alert.alert('팔로우', error instanceof Error ? error.message : getMsgRef.current('COMMON', '023'));
+      return false;
+    }
+  };
+
+  const removeFollowerFromList = async (userId: string) => {
+    try {
+      const result = await removeCommunityFollower(accessToken, userId);
+      return result.success;
+    } catch (error) {
+      Alert.alert('팔로워', error instanceof Error ? error.message : getMsgRef.current('COMMON', '023'));
+      return false;
     }
   };
 
@@ -395,6 +527,10 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
     try {
       const postSeq = await createRecipe(draft);
       const fallbackRecipe = toDraftRecipe(draft, postSeq);
+      setMyProfile(current => current ? { ...current, postCount: current.postCount + 1 } : current);
+      setProfileUser(current => current?.usrId === currentUserId
+        ? { ...current, postCount: current.postCount + 1 }
+        : current);
       saveCurrentScreen('tab');
       setRecipes(current => [fallbackRecipe, ...current.filter(recipe => recipe.postSeq !== postSeq)]);
       if (profileUser?.usrId === currentUserId) {
@@ -458,6 +594,10 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
       await deleteRecipeApi(recipe.postSeq);
       setRecipes(current => current.filter(item => item.postSeq !== recipe.postSeq));
       setProfileRecipes(current => current.filter(item => item.postSeq !== recipe.postSeq));
+      setMyProfile(current => current ? { ...current, postCount: Math.max(0, current.postCount - 1) } : current);
+      setProfileUser(current => current?.usrId === currentUserId
+        ? { ...current, postCount: Math.max(0, current.postCount - 1) }
+        : current);
       setDetailRecipe(null);
       setSelectedRecipeId('');
       returnToPreviousScreen();
@@ -491,7 +631,9 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
             selectedCategory={selectedCategory}
             onSearchChange={setSearchText}
             onCategoryChange={setSelectedCategory}
-            onWrite={() => setPage('write')}
+            onLogout={handleLogout}
+            onRefresh={refreshCurrentTab}
+            refreshing={tabRefreshing}
             {...commonRecipeProps}
           />
         );
@@ -504,6 +646,8 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
             selectedCategory={selectedCategory}
             onSearchChange={setSearchText}
             onCategoryChange={setSelectedCategory}
+            onRefresh={refreshCurrentTab}
+            refreshing={tabRefreshing}
             {...commonRecipeProps}
           />
         );
@@ -511,13 +655,25 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
         return <RecipeSavedScreen recipes={currentRecipes} isLoading={isQueryLoading} {...commonRecipeProps} />;
       case 'myRecipes':
         return (
-          <MyRecipesScreen
+          <RecipeUserScreen
+            profile={myProfile}
             recipes={currentRecipes}
-            isLoading={isQueryLoading}
+            token={accessToken}
+            loading={myProfileLoading || isQueryLoading || !accessToken || !currentUserId}
+            isOwn
+            savedIds={savedIds}
             savedCount={savedCount}
+            loadError={myProfileError}
+            ownTitle={menuName}
+            onToggleFollow={() => undefined}
+            onRelationPress={openFollowList}
             onWrite={() => setPage('write')}
             onLogout={handleLogout}
-            {...commonRecipeProps}
+            onRetry={() => { void loadMyProfile(); }}
+            onOpenRecipe={openRecipe}
+            onToggleSaved={toggleSaved}
+            onToggleLike={toggleLiked}
+            onAuthorPress={openUserProfile}
           />
         );
     }
@@ -525,7 +681,26 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
 
   return (
     <View style={styles.container}>
-      {page === 'profile' ? (
+      {page === 'follows' ? (
+        <View style={styles.container}>
+          <RecipeHeader title="팔로워 및 팔로잉" onBack={returnToPreviousScreen} />
+          <CommunityFollowListScreen
+            token={accessToken}
+            relationType={followRelationType}
+            followerCount={profileUser?.usrId === currentUserId
+              ? profileUser.followerCount
+              : myProfile?.followerCount ?? 0}
+            followingCount={profileUser?.usrId === currentUserId
+              ? profileUser.followingCount
+              : myProfile?.followingCount ?? 0}
+            onRelationTypeChange={setFollowRelationType}
+            onUserSelect={openUserProfile}
+            onToggleFollow={toggleFollowFromList}
+            onRemoveFollower={removeFollowerFromList}
+            onRelationChanged={() => { void refreshMyProfileCounts(); }}
+          />
+        </View>
+      ) : page === 'profile' ? (
         profileUser ? (
           <RecipeUserScreen
             profile={profileUser}
@@ -534,8 +709,13 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
             loading={profileLoading}
             isOwn={profileUser.usrId === currentUserId}
             savedIds={profileRecipes.filter(recipe => recipe.savedByMe).map(recipe => recipe.id)}
+            savedCount={profileUser.usrId === currentUserId ? savedCount : undefined}
+            ownTitle={menuName}
             onBack={returnFromUserProfile}
             onToggleFollow={() => { void toggleProfileFollow(); }}
+            onRelationPress={profileUser.usrId === currentUserId ? openFollowList : undefined}
+            onWrite={profileUser.usrId === currentUserId ? () => setPage('write') : undefined}
+            onLogout={profileUser.usrId === currentUserId ? handleLogout : undefined}
             onOpenRecipe={openRecipe}
             onToggleSaved={toggleSaved}
             onToggleLike={toggleLiked}
@@ -602,7 +782,21 @@ function RecipeAppScreen({ activeTab, onLogout }: RecipeAppScreenProps) {
           difficulties={difficulties}
         />
       ) : renderTab()}
-      <BrandLoader visible={loading || loggingOut || profileLoading} />
+      <BrandLoader
+        visible={loading || loggingOut || profileLoading || myProfileLoading
+          || (page === 'tab' && activeTab === 'myRecipes' && isQueryLoading)}
+      />
+      {toastMessage ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.toast,
+            { opacity: toastOpacity, transform: [{ translateY: toastTranslateY }] },
+          ]}
+        >
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -641,6 +835,7 @@ function toRecipe(row: RecipeResponse): Recipe {
     savedByMe: row.savedByMe,
     isMine: row.mine,
     createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
     ingredientItems: (row.ingredients ?? []).map(item => ({
       ingredientGroupCode: item.ingredientGroupCode,
       ingredientCode: item.ingredientCode,

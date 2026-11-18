@@ -1,10 +1,11 @@
 import React from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 
 import RecipeCard from '../../components/recipes/RecipeCard';
 import RecipeCategories from '../../components/recipes/RecipeCategories';
 import RecipeHeader from '../../components/recipes/RecipeHeader';
 import RecipeEmptyState from '../../components/recipes/RecipeEmptyState';
+import usePullToRefreshOnRelease from '../../hooks/usePullToRefreshOnRelease';
 import type { Recipe, RecipeCategory } from '../../types/recipe';
 import styles from '../../styles/recipeApp';
 
@@ -22,13 +23,32 @@ interface RecipeSearchScreenProps {
   onToggleSaved: (id: string) => void;
   onToggleLike: (id: string) => void;
   onAuthorPress: (userId: string) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }
 
 function RecipeSearchScreen(props: RecipeSearchScreenProps) {
+  const pullRefreshHandlers = usePullToRefreshOnRelease(props.onRefresh);
+
   return (
     <>
       <RecipeHeader title="레시피 검색" />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        scrollEventThrottle={Platform.OS === 'ios' ? 16 : undefined}
+        onScroll={Platform.OS === 'ios' ? pullRefreshHandlers.onScroll : undefined}
+        onScrollBeginDrag={Platform.OS === 'ios' ? pullRefreshHandlers.onScrollBeginDrag : undefined}
+        onScrollEndDrag={Platform.OS === 'ios' ? pullRefreshHandlers.onScrollEndDrag : undefined}
+        refreshControl={(
+          <RefreshControl
+            refreshing={props.refreshing}
+            onRefresh={Platform.OS === 'ios' ? undefined : props.onRefresh}
+            tintColor="#C86145"
+            colors={["#C86145"]}
+          />
+        )}
+      >
         <Text style={styles.pageTitle}>무엇이 먹고 싶나요?</Text>
         <Text style={styles.pageSubtitle}>요리 이름이나 재료로 찾아보세요.</Text>
         <View style={styles.searchInputWrap}>

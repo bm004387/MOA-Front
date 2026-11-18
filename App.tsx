@@ -14,6 +14,7 @@ import RecipeAppScreen from './src/screens/RecipeAppScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import BottomNavigation from './src/components/common/BottomNavigation';
 import BrandLoader from './src/components/common/BrandLoader';
+import AdBanner from './src/components/ads/AdBanner';
 import { getBottomMenuList } from './src/api/menuApi';
 import { loginWithPin, logout, validateSession } from './src/api/authApi';
 import {
@@ -54,11 +55,12 @@ const SESSION_RESUME_GRACE_MS = 3_000;
 interface RouteScreenProps {
   onLogout: () => void;
   onMenuSelect: (item: MenuItem) => void;
+  menuName?: string;
 }
 
 const routeScreens: Record<AppRoute, (props: RouteScreenProps) => React.ReactNode> = {
   main: ({ onLogout }) => <RecipeAppScreen activeTab="home" onLogout={onLogout} />,
-  myInfo: ({ onLogout }) => <RecipeAppScreen activeTab="myRecipes" onLogout={onLogout} />,
+  myInfo: ({ onLogout, menuName }) => <RecipeAppScreen activeTab="myRecipes" onLogout={onLogout} menuName={menuName} />,
   settings: ({ onMenuSelect }) => <SettingsScreen onMenuSelect={onMenuSelect} />,
   community: ({ onLogout }) => <RecipeAppScreen activeTab="search" onLogout={onLogout} />,
   saved: ({ onLogout }) => <RecipeAppScreen activeTab="saved" onLogout={onLogout} />,
@@ -380,7 +382,12 @@ function AppContent() {
 
         {routeToRender && (
           <View style={{ flex: 1 }}>
-            {routeScreens[routeToRender]({ onLogout: handleLogout, onMenuSelect: handleMenuSelect })}
+            {routeScreens[routeToRender]({
+              onLogout: handleLogout,
+              onMenuSelect: handleMenuSelect,
+              menuName: menuItems.find(item => item.programUrl === routeToRender)?.menuName,
+            })}
+            <AdBanner enabled={screen !== 'locked'} />
             <BottomNavigation
               items={menuItems}
               accessToken={menuAccessToken}
@@ -407,6 +414,10 @@ function AppContent() {
               />
             )}
           </View>
+        )}
+
+        {!routeToRender && screen !== 'loading' && (
+          <AdBanner enabled={screen !== 'locked'} />
         )}
       </KeyboardAvoidingView>
       <BrandLoader visible={screen === 'loading'} />

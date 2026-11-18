@@ -40,132 +40,13 @@ function SettingsScreen({ onMenuSelect }: SettingsScreenProps) {
     void loadMenus();
   }, []);
 
-  const groups = useMemo(() =>
-    (() => {
-      const menuGroups = menus
-        .filter(parent => parent.programUrl !== 'settings')
-        .map(parent => ({
-          parent,
-          children: menus.filter(item => item.upperMenuId === parent.menuId),
-        }))
-        .filter(group => group.children.length > 0);
-      const recipeMenuExists = menuGroups.some(({ parent }) => /레시피|요리|식탁/.test(parent.menuName));
-      if (!recipeMenuExists) {
-        const createRouteItem = (route: string, label: string, parentId: string, fallbackId: string) => {
-          const registered = menus.find(item => item.programUrl === route);
-          return {
-            ...registered,
-            menuId: registered?.menuId ?? fallbackId,
-            menuName: label,
-            upperMenuId: parentId,
-            menuLevel: 3,
-            menuType: registered?.menuType ?? 'MENU',
-            icoFilSeq: registered?.icoFilSeq ?? null,
-            programCode: registered?.programCode ?? fallbackId,
-            programUrl: route,
-          } as MenuItem;
-        };
-        const discoveryId = 'local-recipe-discovery';
-        const cookingId = 'local-my-cooking';
-        return [
-          {
-            parent: {
-              menuId: discoveryId,
-              menuName: '레시피 둘러보기',
-              menuLevel: 2,
-              menuType: 'MENU',
-              programUrl: null,
-            } as MenuItem,
-            children: [
-              createRouteItem('main', '홈', discoveryId, 'local-recipe-home'),
-              createRouteItem('community', '레시피 검색', discoveryId, 'local-recipe-search'),
-            ],
-          },
-          {
-            parent: {
-              menuId: cookingId,
-              menuName: '나의 요리',
-              menuLevel: 2,
-              menuType: 'MENU',
-              programUrl: null,
-            } as MenuItem,
-            children: [
-              createRouteItem('myInfo', '내 레시피', cookingId, 'local-my-recipes'),
-              createRouteItem('saved', '저장한 레시피', cookingId, 'local-saved-recipes'),
-            ],
-          },
-        ];
-      }
-
-      const existingSavedItem = menus.find(item => item.programUrl === 'saved');
-      const targetGroupIndex = menuGroups.findIndex(({ parent }) =>
-        parent.programUrl === 'myInfo' || /요리|레시피/.test(parent.menuName),
-      );
-
-      if (targetGroupIndex >= 0) {
-        const targetGroup = menuGroups[targetGroupIndex];
-        if (!targetGroup.children.some(item => item.programUrl === 'myInfo')) {
-          targetGroup.children.push({
-            menuId: 'local-my-recipes-home',
-            menuName: '내 레시피',
-            upperMenuId: targetGroup.parent.menuId,
-            menuLevel: (targetGroup.parent.menuLevel ?? 1) + 1,
-            menuType: targetGroup.parent.menuType,
-            icoFilSeq: null,
-            programCode: 'MY_RECIPE',
-            programUrl: 'myInfo',
-          });
-        }
-        if (!targetGroup.children.some(item => item.programUrl === 'saved')) {
-          targetGroup.children.push({
-            menuId: existingSavedItem?.menuId ?? 'local-saved-recipes',
-            menuName: '저장한 레시피',
-            upperMenuId: targetGroup.parent.menuId,
-            menuLevel: (targetGroup.parent.menuLevel ?? 1) + 1,
-            menuType: existingSavedItem?.menuType,
-            icoFilSeq: existingSavedItem?.icoFilSeq ?? null,
-            programCode: existingSavedItem?.programCode ?? 'SAVED',
-            programUrl: 'saved',
-          });
-        }
-        return menuGroups;
-      }
-
-      const savedItem: MenuItem = existingSavedItem ?? {
-        menuId: 'local-saved-recipes',
-        menuName: '저장한 레시피',
-        upperMenuId: 'local-my-recipes',
-        menuLevel: 2,
-        sortOrder: 2,
-        menuType: 'MENU',
-        icoFilSeq: null,
-        programCode: 'SAVED',
-        programUrl: 'saved',
-      };
-      menuGroups.unshift({
-        parent: {
-          menuId: 'local-my-recipes',
-          menuName: '나의 요리',
-          menuLevel: 1,
-          menuType: 'MENU',
-          programUrl: null,
-        },
-        children: [
-          {
-            menuId: 'local-my-recipes-home',
-            menuName: '내 레시피',
-            upperMenuId: 'local-my-recipes',
-            menuLevel: 2,
-            menuType: 'MENU',
-            programCode: 'MY_RECIPE',
-            programUrl: 'myInfo',
-          },
-          { ...savedItem, upperMenuId: 'local-my-recipes' },
-        ],
-      });
-      return menuGroups;
-    })(),
-  [menus]);
+  const groups = useMemo(() => menus
+    .filter(parent => parent.programUrl !== 'settings')
+    .map(parent => ({
+      parent,
+      children: menus.filter(item => item.upperMenuId === parent.menuId),
+    }))
+    .filter(group => group.children.length > 0), [menus]);
 
   return (
     <View style={mainStyles.container}>

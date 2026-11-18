@@ -6,13 +6,6 @@ import styles from '../../styles/bottomNavigation';
 import BrandLoader from './BrandLoader';
 import useMsg from '../../hooks/useMsg';
 
-const recipeLabels: Record<string, string> = {
-  main: '홈',
-  community: '검색',
-  settings: '전체메뉴',
-  myInfo: '내 요리',
-};
-
 interface BottomNavigationProps {
   items: MenuItem[];
   accessToken: string;
@@ -45,9 +38,6 @@ function BottomNavigation({
       ) : (
         items.map(item => {
           const active = item.programUrl === activeRoute;
-          const label = item.programUrl
-            ? recipeLabels[item.programUrl] ?? item.menuName
-            : item.menuName;
           const hasFileIcon = typeof item.icoFilSeq === 'number' && item.icoFilSeq > 0;
           return (
             <Pressable
@@ -72,7 +62,7 @@ function BottomNavigation({
                 </Text>
               )}
               <Text style={[styles.label, active && styles.activeText]}>
-                {label}
+                {item.menuName}
               </Text>
             </Pressable>
           );

@@ -4,6 +4,7 @@ import { Image, Pressable, Text, View } from 'react-native';
 import RecipeArtwork from './RecipeArtwork';
 import { API_BASE_URL } from '../../config/environment';
 import { getAvatarColor } from '../../utils/avatarColor';
+import { formatRecipeTimestamp } from '../../utils/recipeTime';
 import type { Recipe } from '../../types/recipe';
 import styles from '../../styles/recipeApp';
 
@@ -19,6 +20,8 @@ interface RecipeCardProps {
 }
 
 function RecipeCard({ recipe, token, isSaved, compact = false, onOpen, onToggleSaved, onToggleLike, onAuthorPress }: RecipeCardProps) {
+  const timestampLabel = formatRecipeTimestamp(recipe.createdAt, recipe.updatedAt);
+
   return (
     <View style={[styles.recipeCard, compact && styles.recipeCardCompact]}>
       <Pressable onPress={() => onOpen(recipe)} style={compact ? styles.recipeArtworkCompact : undefined}>
@@ -68,8 +71,9 @@ function RecipeCard({ recipe, token, isSaved, compact = false, onOpen, onToggleS
           <Text numberOfLines={1} style={styles.recipeCardAuthorName}>{recipe.author}</Text>
           <Text style={styles.recipeCardAuthorArrow}>›</Text>
         </Pressable>
+        {timestampLabel ? <Text style={styles.recipeTinyMeta}>{timestampLabel}</Text> : null}
         <View style={styles.recipeCardFooter}>
-          <Text style={styles.recipeTinyMeta}>◷ {recipe.cookingMinutes}분</Text>
+          <Text style={styles.recipeTinyMeta}>◷ 조리 {recipe.cookingMinutes}분</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={recipe.likedByMe ? '좋아요 취소' : '좋아요'}

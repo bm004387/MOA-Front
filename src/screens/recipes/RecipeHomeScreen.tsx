@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 
 import RecipeArtwork from '../../components/recipes/RecipeArtwork';
 import RecipeCard from '../../components/recipes/RecipeCard';
@@ -7,7 +7,9 @@ import RecipeCategories from '../../components/recipes/RecipeCategories';
 import RecipeHeader from '../../components/recipes/RecipeHeader';
 import RecipeEmptyState from '../../components/recipes/RecipeEmptyState';
 import { API_BASE_URL } from '../../config/environment';
+import usePullToRefreshOnRelease from '../../hooks/usePullToRefreshOnRelease';
 import { getAvatarColor } from '../../utils/avatarColor';
+import { formatRecipeTimestamp } from '../../utils/recipeTime';
 import type { Recipe, RecipeCategory } from '../../types/recipe';
 import styles from '../../styles/recipeApp';
 
@@ -26,21 +28,42 @@ interface RecipeHomeScreenProps {
   onToggleSaved: (id: string) => void;
   onToggleLike: (id: string) => void;
   onAuthorPress: (userId: string) => void;
-  onWrite: () => void;
+  onLogout: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }
 
 function RecipeHomeScreen(props: RecipeHomeScreenProps) {
+  const pullRefreshHandlers = usePullToRefreshOnRelease(props.onRefresh);
   const featured = props.recipes[0];
+  const featuredTimestamp = featured
+    ? formatRecipeTimestamp(featured.createdAt, featured.updatedAt)
+    : null;
   const popularRecipes = props.filteredRecipes.filter(recipe => recipe.id !== featured?.id);
 
   return (
     <>
       <RecipeHeader right={(
-        <Pressable onPress={props.onWrite} style={styles.headerIconButton} accessibilityRole="button" accessibilityLabel="레시피 작성">
-          <Text style={styles.headerIcon}>＋</Text>
+        <Pressable onPress={props.onLogout} style={styles.logoutButton} accessibilityRole="button" accessibilityLabel="로그아웃">
+          <Text style={styles.logoutText}>로그아웃</Text>
         </Pressable>
       )} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        scrollEventThrottle={Platform.OS === 'ios' ? 16 : undefined}
+        onScroll={Platform.OS === 'ios' ? pullRefreshHandlers.onScroll : undefined}
+        onScrollBeginDrag={Platform.OS === 'ios' ? pullRefreshHandlers.onScrollBeginDrag : undefined}
+        onScrollEndDrag={Platform.OS === 'ios' ? pullRefreshHandlers.onScrollEndDrag : undefined}
+        refreshControl={(
+          <RefreshControl
+            refreshing={props.refreshing}
+            onRefresh={Platform.OS === 'ios' ? undefined : props.onRefresh}
+            tintColor="#C86145"
+            colors={["#C86145"]}
+          />
+        )}
+      >
         <View style={styles.welcomeRow}>
           <View>
             <Text style={styles.eyebrow}>오늘의 식탁</Text>
@@ -72,7 +95,15 @@ function RecipeHomeScreen(props: RecipeHomeScreenProps) {
                 <Text style={styles.featuredTitle}>{featured.title}</Text>
                 <Text style={styles.featuredSubtitle}>{featured.description}</Text>
                 <View style={styles.featuredMetaRow}>
-                  <Text style={styles.featuredMeta}>◷ {featured.cookingMinutes}분</Text>
+                  <Text style={styles.featuredMeta}>◷ 조리 {featured.cookingMinutes}분</Text>
+                  {featuredTimestamp ? (
+                    <>
+                      <Text style={styles.featuredDot}>·</Text>
+                      <Text style={styles.featuredMeta}>
+                        {featuredTimestamp}
+                      </Text>
+                    </>
+                  ) : null}
                   <Text style={styles.featuredDot}>·</Text>
                   <Text style={styles.featuredMeta}>저장 {featured.saves}</Text>
                 </View>

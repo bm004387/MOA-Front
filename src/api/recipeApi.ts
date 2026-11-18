@@ -37,6 +37,7 @@ export interface RecipeResponse {
   profileImageFilSeq: number | null;
   finishedPhotoFilSeq: number | null;
   createdAt: string;
+  updatedAt?: string | null;
   likeCount: number;
   commentCount: number;
   saveCount: number;
